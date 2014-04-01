@@ -82,6 +82,7 @@ class LbaasAgentManager(periodic_task.PeriodicTasks):
         self.instance_mapping = {}
 
     def _load_drivers(self):
+        import pdb; pdb.set_trace()
         self.device_drivers = {}
         for driver in self.conf.device_driver:
             try:
@@ -211,6 +212,8 @@ class LbaasAgentManager(periodic_task.PeriodicTasks):
         self.plugin_rpc.update_status(obj_type, obj_id, constants.ERROR)
 
     def create_vip(self, context, vip):
+        print "In agent manager's create_vip!!!!!!!!!!!!!!!!!!!"
+        import pdb; pdb.set_trace()
         driver = self._get_driver(vip['pool_id'])
         try:
             driver.create_vip(vip)
@@ -235,6 +238,8 @@ class LbaasAgentManager(periodic_task.PeriodicTasks):
         driver.delete_vip(vip)
 
     def create_pool(self, context, pool, driver_name):
+        print "Inside agent_manager's create_pool!!!!!!!!!!!!!!"
+        import pdb; pdb.set_trace()
         if driver_name not in self.device_drivers:
             LOG.error(_('No device driver on agent: %s.'), driver_name)
             self.plugin_rpc.update_status('pool', pool['id'], constants.ERROR)

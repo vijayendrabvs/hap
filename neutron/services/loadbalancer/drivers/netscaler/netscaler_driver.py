@@ -23,6 +23,16 @@ from neutron.services.loadbalancer.drivers.netscaler import ncc_client
 
 LOG = logging.getLogger(__name__)
 
+
+#OPTS = [
+#    cfg.MultiStrOpt(
+#        'device_driver',
+#        default=['neutron.services.loadbalancer.drivers'
+#                 '.haproxy.namespace_driver.HaproxyNSDriver'],
+#        help=_('Drivers used to manage loadbalancing devices'),
+#    ),
+#]
+
 NETSCALER_CC_OPTS = [
     cfg.StrOpt(
         'netscaler_ncc_uri',

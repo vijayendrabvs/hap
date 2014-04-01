@@ -61,6 +61,7 @@ def main():
     config.setup_logging(cfg.CONF)
     legacy.modernize_quantum_config(cfg.CONF)
 
+    import pdb; pdb.set_trace()
     mgr = manager.LbaasAgentManager(cfg.CONF)
     svc = LbaasAgentService(
         host=cfg.CONF.host,

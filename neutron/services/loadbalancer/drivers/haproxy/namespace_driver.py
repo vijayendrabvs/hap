@@ -18,6 +18,7 @@
 import os
 import shutil
 import socket
+import traceback
 
 import netaddr
 from oslo.config import cfg
@@ -95,6 +96,7 @@ class HaproxyNSDriver(agent_device_driver.AgentDeviceDriver):
         self._spawn(logical_config, extra_args)
 
     def _spawn(self, logical_config, extra_cmd_args=()):
+        import pdb; pdb.set_trace()
         pool_id = logical_config['pool']['id']
         namespace = get_ns_name(pool_id)
         conf_path = self._get_state_file_path(pool_id, 'conf')
@@ -286,6 +288,7 @@ class HaproxyNSDriver(agent_device_driver.AgentDeviceDriver):
         self.deploy_instance(logical_config)
 
     def create_vip(self, vip):
+        import pdb; pdb.set_trace()
         self._refresh_device(vip['pool_id'])
 
     def update_vip(self, old_vip, vip):
@@ -295,6 +298,8 @@ class HaproxyNSDriver(agent_device_driver.AgentDeviceDriver):
         self.undeploy_instance(vip['pool_id'])
 
     def create_pool(self, pool):
+        print "Inside create_pool!"
+        traceback.print_exc()
         # nothing to do here because a pool needs a vip to be useful
         pass
 
