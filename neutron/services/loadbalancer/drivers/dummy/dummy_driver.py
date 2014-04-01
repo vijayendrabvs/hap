@@ -12,17 +12,18 @@
 #    under the License.
 
 from oslo.config import cfg
+import random
+import string
 
 from neutron.api.v2 import attributes
 from neutron.db.loadbalancer import loadbalancer_db
 from neutron.openstack.common import log as logging
 from neutron.plugins.common import constants
 from neutron.services.loadbalancer.drivers import abstract_driver
+from neutron.services.loadbalancer.drivers.dummy import haproxy_client
+from neutron.services.loadbalancer.drivers.dummy import haproxy_cfg
 
 LOG = logging.getLogger(__name__)
-
-#OPTS = None
-#cfg.CONF.register_opts(OPTS, 'dummy')
 
 HAPROXY_REMOTE_OPTS = [
     cfg.StrOpt(
@@ -36,6 +37,18 @@ HAPROXY_REMOTE_OPTS = [
     cfg.StrOpt(
         'haproxy_password',
         help=_('Password to login to the server running haproxy.'),
+    ),
+    cfg.StrOpt(
+        'haproxy_ssh_port',
+        help=_('SSH port to login to the server running haproxy.'),
+    ),
+    cfg.StrOpt(
+        'haproxy_config_file',
+        help=_('HAProxy config file path.'),
+    ),
+    cfg.StrOpt(
+        'haproxy_pid_file',
+        help=_('HAProxy pid file path.'),
     )
 ]
 
@@ -44,21 +57,76 @@ cfg.CONF.register_opts(HAPROXY_REMOTE_OPTS, 'dummy')
 
 class DummyPluginDriver(abstract_driver.LoadBalancerAbstractDriver):
 
+    hap_ip = ""
+    hap_username = ""
+    hap_password = ""
+    hap_ssh_port = ""
+    hap_cfg_file = ""
+
     def __init__(self, plugin):
         self.plugin = plugin
         import pdb; pdb.set_trace()
         print "inside __init__ of remote plugin driver!"
-        haproxy_ip = cfg.CONF.dummy.haproxy_ip
-        haproxy_username = cfg.CONF.dummy.haproxy_username
-        haproxy_password = cfg.CONF.dummy.haproxy_password
-        #self.client = ncc_client.NSClient(ncc_uri,
-        #                                  ncc_username,
-        #                                  ncc_password)
+        self.hap_ip = cfg.CONF.dummy.haproxy_ip
+        self.hap_username = cfg.CONF.dummy.haproxy_username
+        self.hap_password = cfg.CONF.dummy.haproxy_password
+        self.hap_ssh_port = cfg.CONF.dummy.haproxy_ssh_port
+        self.hap_cfg_file = cfg.CONF.dummy.haproxy_config_file
+        self.hap_pid_file = cfg.CONF.dummy.haproxy_pid_file
+        if self.hap_ssh_port is None:
+            self.hap_ssh_port = 22
+        #self.client = haproxy_client.HAProxyClient(haproxy_ip,
+        #                                  haproxy_username,
+        #                                  haproxy_password,
+        #                                  haproxy_ssh_port)
+        #self.client = haproxy_client.HAProxyClient.gethaproxyclient(haproxy_ip,
+        #                                  haproxy_username,
+        #                                  haproxy_password,
+        #                                  haproxy_ssh_port)
 
     def create_vip(self, context, vip):
         print "inside create_vip of remote plugin driver!"
         import pdb; pdb.set_trace()
+        client = haproxy_client.HAProxyClient(self.hap_ip,
+                                          self.hap_username,
+                                          self.hap_password,
+                                          self.hap_ssh_port)
         status = constants.ACTIVE
+        # First, get the remote haproxy.cfg file here.
+        randfilename = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(10))
+        tmpfile = "/tmp/" + randfilename
+        sftps = client.session.open_sftp()
+        sftps.get(self.hap_cfg_file, tmpfile)
+        blk_name_t_map, blk_name_c_map = haproxy_cfg.loadhaproxycfgfile(tmpfile)
+        # blk_name_t_map must either have a frontend and a backend
+        # corresponding to this VIP, or if no VIP has ever existed,
+        # nothing to begin with.
+        # For now, assume we have nothing to begin with,
+        # and that we create a new frontend and backend each time.
+        frontendname = "frontend-vip-" + vip['address']
+        backendname = "backend-vip-" + vip['address']
+        frontend = haproxy_cfg.createfrontend(frontendname, backendname, str(vip['address']), str(vip['protocol_port']), str(vip['protocol']))
+        balance = "roundrobin"
+        backend = haproxy_cfg.createbackend(backendname, str(vip['protocol']), balance)
+        # Add this frontend to content map.
+        blk_name_c_map[frontendname] = frontend
+        # Also add type to type map.
+        blk_name_t_map[frontendname] = "frontend"
+        # Add backend to content map.
+        blk_name_c_map[backendname] = backend
+        # Add backend name and type to type map.
+        blk_name_t_map[backendname] = "backend"
+        # Rewrite this new map to the same temp file - we don't need it anymore.
+        haproxy_cfg.writehaproxycfgfile(tmpfile, blk_name_c_map, blk_name_t_map)
+        # Now put this file in the remote haproxy.cfg file's place.
+        sftps.put(tmpfile, self.hap_cfg_file)
+        # Next reload the haproxy.
+        cmd = "haproxy -f " + self.hap_cfg_file + " -p " + self.hap_pid_file
+        rc = client.exec_cmd(cmd)
+        #blk_name_t_map
+        #rc = client.exec_cmd(cmd)
+        print "rc is --> " + str(rc)
+        client.session.close()
         self.plugin.update_status(context, loadbalancer_db.Vip, vip["id"],
                                   status)
 
@@ -69,6 +137,7 @@ class DummyPluginDriver(abstract_driver.LoadBalancerAbstractDriver):
     def delete_vip(self, context, vip):
         print "inside delete_vip of remote plugin driver!"
         import pdb; pdb.set_trace()
+        self.plugin._delete_db_vip(context, vip['id'])
 
     def create_pool(self, context, pool):
         print "inside create_pool of remote plugin driver!"
